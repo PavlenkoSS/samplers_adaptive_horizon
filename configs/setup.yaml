@@ -19,6 +19,6 @@ hydra:
 # CometML
 cometml:
   api_key: ${oc.env:COMETML_API_KEY}
-  project_name: early_stopping_gflow_jax
+  project_name: early_stopping_gflow_jax_2
   workspace: ${oc.env:COMETML_WORKSPACE}
   prefix: ""
