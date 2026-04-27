@@ -264,6 +264,15 @@ def eval_fn(cfg, model_state, target):
 
 @hydra.main(version_base=None, config_path="configs", config_name="base_conf")
 def main(cfg: DictConfig) -> None:
+    # import pickle
+    # p='checkpoints/banana/gfn_non_acyclic/model_params_19999.pkl'
+    # with open(p,'rb') as f:
+    #     d=pickle.load(f)
+    # params=d['params']
+    # print(type(params), list(params.keys())[:10])
+    # if 'params' in params:
+    #     print('params keys:', params['params'].keys())
+
     os.environ["HYDRA_FULL_ERROR"] = "1"
     # Load the chosen algorithm-specific configuration dynamically
     cfg = hydra.utils.instantiate(cfg)

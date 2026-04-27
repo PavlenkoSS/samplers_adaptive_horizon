@@ -18,6 +18,23 @@ reg_coef: ${target.gfn_non_acyclic.reg_coef}
 eval_max_steps: ${target.gfn_non_acyclic.eval_max_steps}
 step_name: "ula"
 
+# Early stopping diagnostics for baseline chains.
+# Main threshold uses modern conservative guidance: R-hat < 1.01.
+# Stan also recommends at least 4 chains and interpreting < 1.01 as fully converged.
+# Older/looser practice often used 1.05; 1.10 is only a rough exploratory tolerance.
+early_stop:
+  min_chain_length: 2
+  n_checkpoints: 25
+  rhat:
+    threshold: 1.01
+  geweke:
+    frac1: 0.1
+    frac2: 0.5
+    spectral_estimator: ar  # ar | batchmeans | iid
+    max_frac_gt_1p96: 0.05
+    max_frac_gt_2p58: 0.01
+    max_abs_z_threshold: 4.0
+
 # Learning rate scheduler
 lr_schedule:
   type: multistep  # multistep | cosine | constant
