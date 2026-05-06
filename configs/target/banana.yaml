@@ -35,3 +35,31 @@ all:
   use_lp: True
   num_hid: 64
 
+reference_metrics:
+  default:
+    ula_clf:
+      mmd: null
+      sd: null
+      w2: null
+    full_model:
+      mmd: null
+      sd: null
+      w2: null
+  dim_2:
+    ula_clf:
+      mmd: null
+      sd: null
+      w2: null
+    full_model:
+      mmd: null
+      sd: null
+      w2: null
+  dim_40:
+    ula_clf:
+      mmd: null
+      sd: null
+      w2: null
+    full_model:
+      mmd: null
+      sd: null
+      w2: null

@@ -32,7 +32,11 @@ def mmd_median(
     K_XX = kernel_matrix(d_XX, l, kernel, bandwidth, 0.5)
     K_YY = kernel_matrix(d_YY, l, kernel, bandwidth, 0.5)
 
-    mmd = (K_XX.sum() / (n * (n - 1))) + (K_YY.sum() / (m * (m - 1))) - 2 * K_XY.mean()
+    mmd = (
+        (K_XX.sum() - jnp.trace(K_XX)) / (m * (m - 1))
+        + (K_YY.sum() - jnp.trace(K_YY)) / (n * (n - 1))
+        - 2 * K_XY.mean()
+    )
     mmd = jnp.sqrt(jnp.maximum(1e-20, mmd))  # Ensure non-negative value
     return mmd
 

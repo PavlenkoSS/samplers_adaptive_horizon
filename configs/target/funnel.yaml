@@ -76,3 +76,41 @@ all: # Parameters that are shared between all algorithms
   num_steps: 64
   use_lp: False
   num_hid: 256
+
+# Reference values for the baseline metric plots (horizontal lines).
+# Resolved as `dim_<N>` first, then `default`. Leave a value null to omit
+# the corresponding horizontal line for that metric.
+reference_metrics:
+  default:
+    ula_clf:
+      mtl: null
+      mmd: null
+      sd: null
+      w2: null
+    full_model:
+      mtl: null
+      mmd: null
+      sd: null
+      w2: null
+  dim_2:
+    ula_clf:
+      mtl: 21.84
+      mmd: 0.12
+      sd: 8.84
+      w2: null
+    full_model:
+      mtl: 36.33
+      mmd: 0.08
+      sd: 4.94
+      w2: null
+  dim_40:
+    ula_clf:
+      mtl: null
+      mmd: null
+      sd: null
+      w2: null
+    full_model:
+      mtl: null
+      mmd: null
+      sd: null
+      w2: null

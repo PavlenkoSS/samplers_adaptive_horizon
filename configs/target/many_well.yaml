@@ -131,3 +131,38 @@ all: # Parameters that are shared between all algorithms
   num_steps: 64
   use_lp: False
   num_hid: 256
+
+reference_metrics:
+  default:
+    ula_clf:
+      mtl: null
+      mmd: null
+      sd: null
+      w2: null
+    full_model:
+      mtl: null
+      mmd: null
+      sd: null
+      w2: null
+  dim_2:
+    ula_clf:
+      mtl: null
+      mmd: null
+      sd: null
+      w2: null
+    full_model:
+      mtl: null
+      mmd: null
+      sd: null
+      w2: null
+  dim_40:
+    ula_clf:
+      mtl: null
+      mmd: null
+      sd: null
+      w2: null
+    full_model:
+      mtl: 75.38
+      mmd: 0.31
+      sd: 62.47
+      w2: null
