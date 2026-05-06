@@ -4,6 +4,7 @@ For further details see: https://arxiv.org/abs/2301.12594 and https://arxiv.org/
 """
 
 from functools import partial
+import os
 
 import distrax
 import jax
@@ -39,11 +40,10 @@ def _format_gamma(g):
 
 
 def gfn_non_acyclic_baseline(cfg, target, exp=None):
-    key_gen = jax.random.PRNGKey(cfg.seed)
-
     dim = target.dim
     alg_cfg = cfg.algorithm
     batch_size = alg_cfg.batch_size
+    n_eval_seeds = int(getattr(alg_cfg, "n_eval_seeds", 3))
 
     compute_mmd = bool(getattr(alg_cfg, "compute_mmd", True))
     metric_names = ("mmd", "sd") if compute_mmd else ("sd",)
@@ -62,10 +62,6 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
         jnp.zeros(dim), jnp.ones(dim) * alg_cfg.init_std
     )
 
-    # Initialize the model
-    key, key_gen = jax.random.split(key_gen)
-    model_state = init_model_non_acyclic(key, dim, alg_cfg)
-
     def _make_rnd_eval(gamma):
         return partial(
             rnd_mcmc,
@@ -76,11 +72,7 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
             initial_dist=initial_dist,
         )
 
-    logger = {
-        "stats/step": [],
-        "stats/wallclock": [],
-        "stats/nfe": [],
-    }
+    logger = {}
     # Curve keys treated as `exp.log_curve` curves rather than scalar metrics.
     curve_keys = set()
 
@@ -475,6 +467,8 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
         rhat_classical = []
         # Per-trajectory Geweke stop tracking: -1 = not stopped yet.
         stop_t_per_traj = np.full(n_chains, -1, dtype=int)
+        geweke_max_abs_curve = []
+        geweke_frac_stopped_curve = []
         max_abs_z_threshold = float(getattr(diag_cfg.geweke, "max_abs_z_threshold", 4.0))
         gw_frac1 = float(getattr(diag_cfg.geweke, "frac1", 0.1))
         gw_frac2 = float(getattr(diag_cfg.geweke, "frac2", 0.5))
@@ -508,6 +502,7 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
                 rhat_split.append(float("inf"))
                 rhat_classical.append(float("inf"))
 
+            max_abs_per_chain = None
             # Use JAX Geweke kernel for ar/iid; keep batchmeans path unchanged.
             if gw_estimator in ("ar", "iid"):
                 max_abs_per_chain = np.asarray(
@@ -536,6 +531,12 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
                     # Chain too short for Geweke at this t; skip update.
                     pass
 
+            if geweke_valid_t and max_abs_per_chain is not None:
+                geweke_max_abs_curve.append(float(np.max(max_abs_per_chain)))
+            else:
+                geweke_max_abs_curve.append(float("nan"))
+            geweke_frac_stopped_curve.append(float((stop_t_per_traj != -1).mean()))
+
         # Single sync per stacked array (collapses all queued metric kernels).
         metric_curves = {
             m: np.asarray(jnp.stack(v)) for m, v in metric_curves_jnp.items()
@@ -557,6 +558,8 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
             "rhat_classical": np.asarray(rhat_classical),
             "stop_t_per_traj": stop_t_per_traj,
             "geweke_valid_t_mask": np.asarray(geweke_valid_t_mask, dtype=bool),
+            "geweke_max_abs_curve": np.asarray(geweke_max_abs_curve, dtype=float),
+            "geweke_frac_stopped_curve": np.asarray(geweke_frac_stopped_curve, dtype=float),
         }
 
     def _eval_compute(model_state, key, gamma):
@@ -682,6 +685,8 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
             "rhat_rank_split": diag["rhat_rank_split"],
             "rhat_split": diag["rhat_split"],
             "rhat_classical": diag["rhat_classical"],
+            "geweke_max_abs_curve": diag["geweke_max_abs_curve"],
+            "geweke_frac_stopped_curve": diag["geweke_frac_stopped_curve"],
             "rhat_triggered": rhat_triggered,
             "rhat_status_str": rhat_status_str,
             "t_stop_rhat": t_stop_rhat,
@@ -699,6 +704,7 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
             "geweke_metric_ci": geweke_metric_ci,
             "geweke_visualise": geweke_visualise,
             "samples_full": samples_full,
+            "trajectories": np.asarray(trajectories),
         }
 
     def _prefix(base, gamma):
@@ -783,28 +789,66 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
             samples=data["samples_full"], prefix="full"
         ).items()})
 
-    ### Multi-gamma orchestration: run eval once per gamma, aggregate, plot.
-    key, key_gen = jax.random.split(key_gen)
-    logger["stats/step"].append(0)
-    logger["stats/nfe"].append(batch_size)
-    per_gamma_results = []
-    for gamma in gammas:
-        k, key_gen = jax.random.split(key_gen)
-        result = _eval_compute(model_state, k, gamma)
-        per_gamma_results.append(result)
-        _populate_logger(gamma, result)
+    def _save_seed_diagnostics(seed_idx, seed_value, per_gamma_results):
+        out_dir = os.path.join(os.getcwd(), "diagnostics_data")
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"baseline_diagnostics_seed_{seed_value}.npz")
+        flat = {
+            "seed": np.asarray(seed_value, dtype=int),
+            "seed_index": np.asarray(seed_idx, dtype=int),
+        }
+        for result in per_gamma_results:
+            g_prefix = f"gamma_{_format_gamma(result['gamma'])}"
+            flat[f"{g_prefix}/t_grid"] = np.asarray(result["t_grid"], dtype=int)
+            flat[f"{g_prefix}/chains"] = np.asarray(result["trajectories"])
+            flat[f"{g_prefix}/rhat_classical"] = np.asarray(result["rhat_classical"], dtype=float)
+            flat[f"{g_prefix}/geweke_max_abs"] = np.asarray(result["geweke_max_abs_curve"], dtype=float)
+            flat[f"{g_prefix}/geweke_frac_early_stopped"] = np.asarray(
+                result["geweke_frac_stopped_curve"], dtype=float
+            )
+        np.savez_compressed(out_path, **flat)
 
-    # One overlay figure per metric, drawn from all gammas at once.
-    for m in metric_names:
-        fig_m = _plot_metric_curves_overlay(m, gammas, per_gamma_results)
-        logger[f"figures/metric_{m}"] = [wandb.Image(fig_m)]
-        plt.close(fig_m)
-    plt.close("all")
+    for seed_idx in range(n_eval_seeds):
+        seed_value = int(cfg.seed + seed_idx)
+        key_gen = jax.random.PRNGKey(seed_value)
 
-    last_entry = extract_last_entry(logger)
-    if getattr(cfg, "save_local_plots", True):
-        save_plot_images(last_entry, cfg, 0)
-    if cfg.use_cometml:
+        # Initialize the model per-seed to keep runs independent.
+        key, key_gen = jax.random.split(key_gen)
+        model_state = init_model_non_acyclic(key, dim, alg_cfg)
+
+        logger = {
+            "stats/step": [],
+            "stats/wallclock": [],
+            "stats/nfe": [],
+        }
+        curve_keys = set()
+
+        ### Multi-gamma orchestration: run eval once per gamma, aggregate, plot.
+        key, key_gen = jax.random.split(key_gen)
+        logger["stats/step"].append(0)
+        logger["stats/nfe"].append(batch_size)
+        per_gamma_results = []
+        for gamma in gammas:
+            k, key_gen = jax.random.split(key_gen)
+            result = _eval_compute(model_state, k, gamma)
+            per_gamma_results.append(result)
+            _populate_logger(gamma, result)
+
+        _save_seed_diagnostics(seed_idx, seed_value, per_gamma_results)
+
+        # One overlay figure per metric, drawn from all gammas at once.
+        for m in metric_names:
+            fig_m = _plot_metric_curves_overlay(m, gammas, per_gamma_results)
+            logger[f"figures/metric_{m}"] = [wandb.Image(fig_m)]
+            plt.close(fig_m)
+        plt.close("all")
+
+        last_entry = extract_last_entry(logger)
+        if getattr(cfg, "save_local_plots", True):
+            save_plot_images(last_entry, cfg, seed_idx)
+        if not cfg.use_cometml:
+            continue
+
         # Curves share the same x-grid per gamma; pick the right `t_grid`
         # by stripping the optional `gamma_<g>/` prefix and reusing the
         # corresponding entry from `last_entry`.
@@ -819,19 +863,19 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
         metrics = {}
         for k, value in last_entry.items():
             if isinstance(value, wandb.Image):
-                exp.log_image(value.image, name=k, step=0)
+                exp.log_image(value.image, name=f"seed_{seed_idx}/{k}", step=seed_idx)
             elif k.endswith("curves/t_grid"):
                 continue
             elif k in curve_keys:
                 try:
                     exp.log_curve(
-                        name=k,
+                        name=f"seed_{seed_idx}/{k}",
                         x=_t_grid_for(k),
                         y=np.asarray(value).tolist(),
-                        step=0,
+                        step=seed_idx,
                     )
                 except Exception:
                     pass
             else:
                 metrics[k] = value
-        exp.log_metrics(metrics, step=0)
+        exp.log_metrics({f"seed_{seed_idx}/{k}": v for k, v in metrics.items()}, step=seed_idx)
