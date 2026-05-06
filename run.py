@@ -13,6 +13,17 @@ from utils.helper import flatten_dict, reset_device_memory
 from utils.train_selector import get_train_fn
 
 
+def _resolve_train_fn(alg_name: str):
+    # Baseline entrypoint was migrated to diagnostics-focused module.
+    if alg_name == "gfn_non_acyclic_baseline":
+        from algorithms.gfn_non_acyclic.gfn_non_acyclic_baseline_diagnostics import (
+            gfn_non_acyclic_baseline,
+        )
+
+        return gfn_non_acyclic_baseline
+    return get_train_fn(alg_name)
+
+
 @hydra.main(version_base=None, config_path="configs", config_name="base_conf")
 def main(cfg: DictConfig) -> None:
     os.environ["HYDRA_FULL_ERROR"] = "1"
@@ -47,7 +58,7 @@ def main(cfg: DictConfig) -> None:
                 OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True)
             )
         )
-    train_fn = get_train_fn(cfg.algorithm.name)
+    train_fn = _resolve_train_fn(cfg.algorithm.name)
 
     try:
         if cfg.use_jit:

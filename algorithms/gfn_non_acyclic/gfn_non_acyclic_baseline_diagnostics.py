@@ -458,7 +458,7 @@ def gfn_non_acyclic_baseline(cfg, target, exp=None):
         """
         diag_cfg = getattr(cfg.algorithm, "early_stop", None)
         min_steps = int(getattr(diag_cfg, "min_chain_length", 20))
-        n_grid = int(getattr(diag_cfg, "n_checkpoints", 25))
+        n_grid = int(getattr(diag_cfg, "n_checkpoints", 5))
         max_steps = int(trajectories.shape[1])
         t_grid = _build_t_grid(max_steps, min_steps, n_grid)
 
