@@ -14,8 +14,8 @@ from utils.train_selector import get_train_fn
 
 
 def _resolve_train_fn(alg_name: str):
-    # Baseline entrypoint was migrated to diagnostics-focused module.
-    if alg_name == "gfn_non_acyclic_baseline":
+    # Keep baseline and baseline_diagnostics as distinct entrypoints.
+    if alg_name == "gfn_non_acyclic_baseline_diagnostics":
         from algorithms.gfn_non_acyclic.gfn_non_acyclic_baseline_diagnostics import (
             gfn_non_acyclic_baseline,
         )
@@ -30,8 +30,18 @@ def main(cfg: DictConfig) -> None:
     # Load the chosen algorithm-specific configuration dynamically
     cfg = hydra.utils.instantiate(cfg)
     target = cfg.target.fn
+    target_dim = int(target.dim)
 
-    run_name = f"{cfg.cometml.prefix}_{cfg.algorithm.name}_{cfg.target.name}_{target.dim}_{datetime.now()}_seed{cfg.seed}"
+    # Default checkpoint path now depends on environment + dimensionality.
+    if hasattr(cfg, "algorithm") and hasattr(cfg.algorithm, "checkpoint_dir"):
+        if getattr(cfg.algorithm, "checkpoint_dir", None) in (None, ""):
+            cfg.algorithm.checkpoint_dir = os.path.join(
+                "checkpoints",
+                f"{cfg.target.name}_{target_dim}D",
+                cfg.algorithm.name,
+            )
+
+    run_name = f"{cfg.cometml.prefix}_{cfg.algorithm.name}_{cfg.target.name}_{target_dim}_{datetime.now()}_seed{cfg.seed}"
     # if not cfg.wandb.get("name"):
     #     cfg.wandb.name = run_name
 
